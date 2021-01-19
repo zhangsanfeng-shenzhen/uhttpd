@@ -1,127 +1,147 @@
 /*
  * Description: network socket manager
- *     History: ou xiao bo, 2021/01/09, create
+ *     History: ou xiao bo, 2021/01/18, create
  */
 
-#include <errno.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <err.h>
 #include <ev.h>
 
 #include "socket.h"
 
-int MAXLNE = 4096;
-
-static void on_write(struct ev_loop *loop, ev_io *io, int revents)
-{
-	uh_conn *conn;
-	conn = io->data;
-	printf("write:%d\n",UH_CONNECT_WRITE);
-	if(conn->flags == UH_CONNECT_WRITE) {
-		ev_io_stop(loop, &conn->read_watcher);
-		ev_io_stop(loop, &conn->write_watcher);
-		close(conn->fd);
-		free(conn);
-	}
-}
-
-static void on_read(struct ev_loop *loop, ev_io *io, int revents)
-{
-	int len;
-	char buff[MAXLNE];
-	uh_conn *conn;
-
-	conn = io->data;
-	len = recv(io->fd, buff, MAXLNE, 0);
-	if (len > 0) {
-		conn->svr->on_recv_pkg(conn, buff, len);
-		ev_io_start(loop, &conn->write_watcher);
-		conn->flags = UH_CONNECT_WRITE;
-	}
-}
-
-static void connection_timeout_cb(struct ev_loop *loop, ev_timer *io, int revents)
-{
-	uh_conn *conn;
-	conn = io->data;
-
-	ev_io_stop(loop, &conn->read_watcher);
-	ev_io_stop(loop, &conn->write_watcher);
-	close(conn->fd);
-	free(conn);
-}
-
-static void on_accept(struct ev_loop *loop, ev_io *io, int revents)
-{
-	int connfd;
-	uh_svr *svr;
-	svr = io->data;
-	if ((connfd = accept(svr->fd, (struct sockaddr *)NULL, NULL)) == -1) {
-		printf("accept socket error: %s(errno: %d)\n", strerror(errno), errno);
-		return;
-	}
-	uh_conn *conn;
-	conn = (uh_conn *)malloc(sizeof(uh_conn));
-	if (conn == NULL) {
-		printf("%d\n",__LINE__);
-		close(svr->fd);
-		return;
-	}
-
-	conn->svr = svr;
-	conn->fd = connfd;
-	conn->read_watcher.data = conn;
-	conn->flags = UH_CONNECT_READ;
-	ev_io_init(&conn->read_watcher, on_read, connfd, EV_READ);
-	ev_io_start(svr->loop, &conn->read_watcher);
-
-	conn->write_watcher.data = conn;
-	ev_io_init(&conn->write_watcher, on_write, connfd, EV_WRITE);
-	//ev_io_start(svr->loop, &conn->write_watcher);
- 
- 	conn->timer_watcher.data = conn;
-    ev_timer_init(&conn->timer_watcher, connection_timeout_cb, UH_CONNECTION_TIMEOUT, 0);
-    ev_timer_start(svr->loop, &conn->timer_watcher);
-
-}
-
-int uh_server_init(uh_svr *svr)
-{
-    int fd;
-    struct sockaddr_in servaddr;
- 
-    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        printf("create socket error: %s(errno: %d)\n", strerror(errno), errno);
-        return 0;
+static void free_res(struct ev_loop *loop, ev_io *io) {
+    skt_conn *conn = io->data;
+    if (conn == NULL) {
+        fprintf(stderr, "line:%d -- the conn is  NULL:%s !\n",__LINE__,strerror(errno) );
+        return;
     }
- 
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(svr->port);
- 
-    if (bind(fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1) {
-        printf("bind socket error: %s(errno: %d)\n", strerror(errno), errno);
-        return 0;
-    }
- 
-    if (listen(fd, 10) == -1) {
-        printf("listen socket error: %s(errno: %d)\n", strerror(errno), errno);
-        return 0;
-    }
+    ev_io_stop(loop, &conn->ev_read);
+	ev_io_stop(loop, &conn->ev_write);
+	free(conn->svr->write_buffer);
+	free(conn->svr->read_buffer);
+    close(conn->fd);
+    free(conn);
+}
 
-	svr->fd = fd;
-	svr->accept_watcher.data = svr;
-	ev_io_init(&svr->accept_watcher, on_accept, fd, EV_READ);
-	ev_io_start(svr->loop, &svr->accept_watcher);
-
-	ev_loop(svr->loop, 0);
-
+int setnonblock(int fd) {
+    int flags = fcntl(fd, F_GETFL);
+    if (flags < 0)
+        return flags;
+ 
+    flags |= O_NONBLOCK;
+    if (fcntl(fd, F_SETFL, flags) < 0)
+        return -1;
+ 
     return 0;
 }
 
+static void write_cb(struct ev_loop *loop, ev_io *io, int revents) {
+	skt_conn *conn = io->data;
+	if (conn->flag == 1) {
+		free_res(loop, io);
+		conn->flag = 2;
+	}
+}
+
+static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
+    skt_conn *conn = io->data;
+    int ret = 0;
+    
+	conn->svr->read_buffer = (char *)malloc(1024);
+	if (conn->svr->read_buffer == NULL) {
+		fprintf(stderr, "malloc error\n");
+		free_res(loop, io);
+        return ;
+	}
+
+	memset(conn->svr->read_buffer,'\0',1024);
+    if (revents & EV_READ) {
+        ret = read(conn->fd, conn->svr->read_buffer, 1024);
+		conn->svr->read_len = ret;
+		conn->svr->on_recv_pkg(conn->svr, conn->svr->read_buffer, ret);
+		conn->flag = 1;
+		ev_io_start(loop, &conn->ev_write);
+		write(conn->fd, conn->svr->write_buffer, conn->svr->write_len);
+    }
+
+    if (EV_ERROR & revents) {
+        fprintf(stderr, "error event in read\n");
+        free_res(loop, io);
+        return ;
+    }
+ 
+    if (ret < 0) {
+        fprintf(stderr, "read error\n");
+        ev_io_stop(EV_A_ io);
+        free_res(loop, io);
+        return;
+    }
+ 
+    if (ret == 0) {
+        fprintf(stderr, "conn disconnected.\n");
+        ev_io_stop(EV_A_ io);
+        free_res(loop, io);
+        return;
+    }
+}
+ 
+
+static void accept_cb(struct ev_loop *loop, ev_io *io, int revents) {
+    struct sockaddr_in conn_addr;
+    socklen_t conn_len = sizeof(conn_addr);
+    int conn_fd = accept(io->fd, (struct sockaddr *) &conn_addr, &conn_len);
+    if (conn_fd == -1) {
+        fprintf(stderr, "line:%d -- the accept return -1:%s !\n",__LINE__,strerror(errno) );
+        return;
+    }
+ 
+    skt_conn *conn = malloc(sizeof(skt_conn));
+    conn->fd = conn_fd;
+	conn->svr = io->data;
+    if (setnonblock(conn->fd) < 0)
+        err(1, "failed to set conn socket to non-blocking");
+ 
+    conn->ev_read.data = conn;
+
+    ev_io_init(&conn->ev_read, read_cb, conn->fd, EV_READ);
+    ev_io_start(loop, &conn->ev_read);
+
+	conn->ev_write.data = conn;
+    ev_io_init(&conn->ev_write, write_cb, conn->fd, EV_WRITE);
+    //ev_io_start(loop, &conn->ev_write);
+}
+
+
+void socket_server_init(skt_svr svr)
+{
+	struct sockaddr_in listen_addr;
+    int reuseaddr_on = 1;
+    int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (listen_fd < 0)
+		err(1, "listen failed");
+	if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_on, sizeof(reuseaddr_on)) == -1)
+		err(1, "setsockopt failed");
+ 
+	memset(&listen_addr, 0, sizeof(listen_addr));
+	listen_addr.sin_family = AF_INET;
+	listen_addr.sin_addr.s_addr = INADDR_ANY;
+	listen_addr.sin_port = htons(svr.server_port);
+ 
+	if (bind(listen_fd, (struct sockaddr *) &listen_addr, sizeof(listen_addr)) < 0)
+		err(1, "bind failed");
+	if (listen(listen_fd, 5) < 0)
+		err(1, "listen failed");
+	if (setnonblock(listen_fd) < 0)
+		err(1, "failed to set server socket to non-blocking");
+ 
+ 	svr.ev_accept.data = &svr;
+	ev_io_init(&svr.ev_accept, accept_cb, listen_fd, EV_READ);
+	ev_io_start(svr.loop, &svr.ev_accept);
+    ev_loop(svr.loop, 0);
+}

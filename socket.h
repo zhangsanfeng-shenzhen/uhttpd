@@ -1,37 +1,29 @@
 /*
  * Description: network socket manager
- *     History: ou xiao bo, 2021/01/09, create
+ *     History: ou xiao bo, 2021/01/18, create
  */
 # ifndef _SOCKET_H_
 # define _SOCKET_H_
 
-#define UH_CONNECTION_TIMEOUT 4
-
-#define UH_CONNECT_READ 1
-#define UH_CONNECT_WRITE 2
-#define UH_CONNECT_CLOSE 3
-#define UH_CONNECT_ACCEPT 4
-
-typedef struct uh_svr
-{
-	char *host;
-	int port;
-	int fd;
-	ev_io accept_watcher;
+typedef struct skt_svr {
+	int server_port;
 	struct ev_loop *loop;
-	void (*on_recv_pkg)(void *conn, void *data, size_t size);
-}uh_svr;
+	ev_io ev_accept;
+	int write_len;
+	char *write_buffer;
+	int read_len;
+	char *read_buffer;
+	void (*on_recv_pkg)(struct skt_svr *svr, void *data, size_t size);
+}skt_svr;
 
-typedef struct uh_conn
-{
-	int fd;
-	unsigned char flags;
-    ev_io read_watcher;
-    ev_io write_watcher;
-    ev_timer timer_watcher;
-	uh_svr *svr;
-}uh_conn;
+typedef struct skt_conn {
+    int fd;
+    ev_io ev_read;
+	ev_io ev_write;
+	int flag;
+	skt_svr *svr;
+} skt_conn;
 
-int uh_server_init(uh_svr *svr);
+void socket_server_init(skt_svr svr);
 
 #endif

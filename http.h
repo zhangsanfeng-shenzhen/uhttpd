@@ -1,28 +1,24 @@
 /*
  * Description: network http manager
- *     History: ou xiao bo, 2021/01/09, create
+ *     History: ou xiao bo, 2021/01/18, create
  */
-
 # ifndef _HTTP_H_
 # define _HTTP_H_
 
-# include "socket.h"
-
-typedef struct uh_value {
-    const char *at;
+typedef struct http_value {
+    const char *data;
     size_t len;
-}uh_value;
+}http_value;
 
 typedef struct uh_request {
-    struct uh_value url;
-    struct uh_value path;
-    struct uh_value query;
-    struct uh_value body;
-}uh_request;
+    http_value url;
+    http_value body;
+	int http_major;
+	int http_minor;
+	long method;
+}http_request;
 
-typedef struct uh_http
-{
-	uh_svr *socket;
-}uh_http;
+void http_parser_get_request_value(char *data, size_t size);
+void http_send_response(struct skt_svr *svr, char *body);
 
-# endif
+#endif

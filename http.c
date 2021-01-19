@@ -1,105 +1,216 @@
 /*
  * Description: network http manager
- *     History: ou xiao bo, 2021/01/09, create
+ *     History: ou xiao bo, 2021/01/18, create
  */
-
-#include <errno.h>
-#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <err.h>
 #include <unistd.h>
 #include <ev.h>
 
 #include "socket.h"
-#include "http.h"
 #include "http_parser.h"
+#include "http.h"
 
-int on_url(http_parser *parser, const char *data, size_t len) {
-	uh_request *request;
-
+static int on_url_cb(struct http_parser *parser, const char *data, int len)
+{
+	http_request *request;
 	request = parser->data;
-	request->url.at = data;
 	request->url.len = len;
-	printf("Url: %.*s\n", (int)len, data);
-	return 0;
+	request->url.data = data;
+
+    return 0;
 }
 
-int on_body(http_parser *parser, const char *data, size_t len) {
-	uh_request *request;
-
+static int on_body_cb(struct http_parser *parser, const char *data, int len)
+{
+	http_request *request;
 	request = parser->data;
-	request->body.at = data;
 	request->body.len = len;
-	printf("Body: %.*s\n", (int)len, data);
+	request->body.data = data;
+
+    return 0;
+}
+
+static int on_message_complete_cb(struct http_parser *parser)
+{
+	http_request *request;
+	request = parser->data;
+	request->http_major = parser->http_major;
+	request->http_minor = parser->http_minor;
+	request->method = parser->method;
+
 	return 0;
 }
 
-static void on_http_parser(uh_request *request, char *data, size_t size)
+static struct http_parser_settings settings = {
+    .on_url = on_url_cb,
+    .on_body = on_body_cb,
+	.on_message_complete = on_message_complete_cb,
+};
+
+void http_parser_get_request_value(char *data, size_t size)
 {
-	http_parser_settings parser_set;
-	parser_set.on_url = on_url;
-    parser_set.on_body = on_body;
-	http_parser *parser = (http_parser *)malloc(sizeof(http_parser));
-	if (parser == NULL) {
-		printf("error:%d\n",__LINE__);
+	http_request request;
+	struct http_parser parser;
+	http_parser_init(&parser, HTTP_REQUEST);
+	parser.data = &request;
+	http_parser_execute(&parser, &settings, data, size);
+}
+
+const char *get_status_description(uint32_t status)
+{
+    switch (status) {
+    case 100:
+        return "Continue";
+    case 101:
+        return "Switching Protocols";
+    case 102:
+        return "Processing";
+    case 200:
+        return "OK";
+    case 201:
+        return "Created";
+    case 202:
+        return "Accepted";
+    case 203:
+        return "Non-Authoritative Information";
+    case 204:
+        return "No Content";
+    case 205:
+        return "Reset Content";
+    case 206:
+        return "Partial Content";
+    case 207:
+        return "Multi-Status";
+    case 208:
+        return "Already Reported";
+    case 226:
+        return "IM Used";
+    case 300:
+        return "Multiple Choices";
+    case 301:
+        return "Moved Permanently";
+    case 302:
+        return "Found";
+    case 303:
+        return "See Other";
+    case 304:
+        return "Not Modified";
+    case 305:
+        return "Use Proxy";
+    case 307:
+        return "Temporary Redirect";
+    case 308:
+        return "Permanent Redirect";
+    case 400:
+        return "Bad Request";
+    case 401:
+        return "Unauthorized";
+    case 402:
+        return "Payment Required";
+    case 403:
+        return "Forbidden";
+    case 404:
+        return "Not Found";
+    case 405:
+        return "Method Not Allowed";
+    case 406:
+        return "Not Acceptable";
+    case 407:
+        return "Proxy Authentication Required";
+    case 408:
+        return "Request Timeout";
+    case 409:
+        return "Conflict";
+    case 410:
+        return "Gone";
+    case 411:
+        return "Length Required";
+    case 412:
+        return "Precondition Failed";
+    case 413:
+        return "Payload Too Large";
+    case 414:
+        return "URI Too Long";
+    case 415:
+        return "Unsupported Media Type";
+    case 416:
+        return "Range Not Satisfiable";
+    case 417:
+        return "Expectation Failed";
+    case 421:
+        return "Misdirected Request";
+    case 422:
+        return "Unprocessable Entity";
+    case 423:
+        return "Locked";
+    case 424:
+        return "Failed Dependency";
+    case 426:
+        return "Upgrade Required";
+    case 428:
+        return "Precondition Required";
+    case 429:
+        return "Too Many Requests";
+    case 431:
+        return "Request Header Fields Too Large";
+    case 451:
+        return "Unavailable For Legal Reasons";
+    case 500:
+        return "Internal Server Error";
+    case 501:
+        return "Not Implemented";
+    case 502:
+        return "Bad Gateway";
+    case 503:
+        return "Service Unavailable";
+    case 504:
+        return "Gateway Timeout";
+    case 505:
+        return "HTTP Version Not Supported";
+    case 506:
+        return "Variant Also Negotiates";
+    case 507:
+        return "Insufficient Storage";
+    case 508:
+        return "Loop Detected";
+    case 510:
+        return "Not Extended";
+    case 511:
+        return "Network Authentication Required";
+    }
+
+    return "Unknown";
+}
+
+static void http_set_header(char *header, int code)
+{
+	char context[] = "HTTP/1.1 %d %s\n" \
+	"Server: nginx/0.7.69\n" \
+	"Content-Type: text/html\n" \
+	"Connection: keep-alive\n" \
+	"Accept-Ranges: bytes\r\n\r\n";
+
+	sprintf(header,context,code,get_status_description(code));
+
+	return;
+}
+
+void http_send_response(struct skt_svr *svr, char *body)
+{
+	char *response;
+	response = (char *)malloc(1024);
+	if (response == NULL) {
+		printf("malloc http_send_response fail!\n");
 		return;
 	}
-	parser->data = request;
-	http_parser_init(parser, HTTP_REQUEST);
-	int parsered = http_parser_execute(parser, &parser_set, data, size);
-	if (parsered != size){
-		printf("error%d\n",__LINE__);
-		return;
-	}
-	free(parser);
-}
 
-void http_404_response(uh_conn *conn)
-{
-	char msg[1024];
-	strcpy(msg, "HTTP/1.1 404 Not Found\n");
-	strcat(msg, "Server: uhttpd/1.0.0\n");
-	strcat(msg, "Content-Type: text/html;charset=utf-8\n");
-	strcat(msg, "\r\n\r\n");
-	strcat(msg, "404");
-	write(conn->fd, msg, strlen(msg));
-}
-
-void on_recv_pkg(uh_conn *conn, void *data, size_t size)
-{
-	uh_request request;
-	on_http_parser(&request, data, size);
-	http_404_response(conn);
-}
-
-int main(void)
-{
-	uh_svr *svr;
-	svr = (uh_svr *)malloc(sizeof(uh_svr));
-	if (svr == NULL) {
-		printf("%d\n",__LINE__);
-		return -1;
-	}
-	svr->port = 8000;
-	svr->host = strdup("192.168.2.226");
-	svr->loop = ev_default_loop(0);
-	if (svr->host == NULL) {
-		printf("%d\n",__LINE__);
-		return -1;
-	}
-	svr->on_recv_pkg = on_recv_pkg;
-
-	uh_http *http;
-	http = (uh_http *)malloc(sizeof(uh_http));
-	if (http == NULL) {
-		printf("%d\n",__LINE__);
-		return -1;
-	}
-	http->socket = svr;
-	uh_server_init(svr);
-
-	return 1;
+	http_set_header(response, 200);
+	strcat(response, body);
+	svr->write_buffer = strdup(response);
+	svr->write_len = strlen(response);
+	free(response);
 }
