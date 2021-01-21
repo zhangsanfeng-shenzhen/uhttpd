@@ -51,12 +51,11 @@ static struct http_parser_settings settings = {
 	.on_message_complete = on_message_complete_cb,
 };
 
-void http_parser_get_request_value(char *data, size_t size)
+void http_parser_get_request_value(http_request *request, char *data, size_t size)
 {
-	http_request request;
 	struct http_parser parser;
 	http_parser_init(&parser, HTTP_REQUEST);
-	parser.data = &request;
+	parser.data = request;
 	http_parser_execute(&parser, &settings, data, size);
 }
 
@@ -199,7 +198,7 @@ static void http_set_header(char *header, int code)
 	return;
 }
 
-void http_send_response(struct skt_svr *svr, char *body)
+void http_send_response(void *conn, char *body)
 {
 	char *response;
 	response = (char *)malloc(1024);
@@ -208,9 +207,10 @@ void http_send_response(struct skt_svr *svr, char *body)
 		return;
 	}
 
+	struct skt_conn *skt = conn;
 	http_set_header(response, 200);
 	strcat(response, body);
-	svr->write_buffer = strdup(response);
-	svr->write_len = strlen(response);
+	skt->write_buffer = strdup(response);
+	skt->write_len = strlen(response);
 	free(response);
 }

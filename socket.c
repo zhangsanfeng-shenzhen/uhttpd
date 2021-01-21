@@ -23,8 +23,8 @@ static void free_res(struct ev_loop *loop, ev_io *io) {
     }
     ev_io_stop(loop, &conn->ev_read);
 	ev_io_stop(loop, &conn->ev_write);
-	free(conn->svr->write_buffer);
-	free(conn->svr->read_buffer);
+	free(conn->write_buffer);
+	free(conn->read_buffer);
     close(conn->fd);
     free(conn);
 }
@@ -53,21 +53,21 @@ static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
     skt_conn *conn = io->data;
     int ret = 0;
     
-	conn->svr->read_buffer = (char *)malloc(1024);
-	if (conn->svr->read_buffer == NULL) {
+	conn->read_buffer = (char *)malloc(1024);
+	if (conn->read_buffer == NULL) {
 		fprintf(stderr, "malloc error\n");
 		free_res(loop, io);
         return ;
 	}
 
-	memset(conn->svr->read_buffer,'\0',1024);
+	memset(conn->read_buffer,'\0',1024);
     if (revents & EV_READ) {
-        ret = read(conn->fd, conn->svr->read_buffer, 1024);
-		conn->svr->read_len = ret;
-		conn->svr->on_recv_pkg(conn->svr, conn->svr->read_buffer, ret);
+        ret = read(conn->fd, conn->read_buffer, 1024);
+		conn->read_len = ret;
+		conn->svr->on_recv_pkg(conn, conn->read_buffer, ret);
 		conn->flag = 1;
 		ev_io_start(loop, &conn->ev_write);
-		write(conn->fd, conn->svr->write_buffer, conn->svr->write_len);
+		write(conn->fd, conn->write_buffer, conn->write_len);
     }
 
     if (EV_ERROR & revents) {

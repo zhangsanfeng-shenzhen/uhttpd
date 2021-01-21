@@ -17,8 +17,7 @@ typedef struct uh_request {
 	int http_minor;
 	long method;
 }http_request;
-
-void http_parser_get_request_value(char *data, size_t size);
-void http_send_response(struct skt_svr *svr, char *body);
+void http_parser_get_request_value(http_request *request, char *data, size_t size);
+void http_send_response(void *conn, char *body);
 
 #endif

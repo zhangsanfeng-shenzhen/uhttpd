@@ -14,14 +14,22 @@
 #include "http_parser.h"
 #include "http.h"
 
-void on_recv_pkg(struct skt_svr *svr, void *data, size_t size)
+void on_recv_pkg(void *conn, void *data, size_t size)
 {
 	char *buff;
 	buff = data;
 
-	char body[]="Hello World\n";
-	http_parser_get_request_value(buff, size);
-	http_send_response(svr, body);
+	http_request *request;
+	request = (http_request *)malloc(sizeof(http_request));
+	if (request == NULL) {
+		printf("error\n");
+		return;
+	}
+	char body[1024];
+	http_parser_get_request_value(request, buff, size);
+	sprintf(body, "Hello World\nmethod is : %ld\n", request->method);
+	http_send_response(conn, body);
+	free(request);
 
 	return;
 }
