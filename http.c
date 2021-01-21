@@ -200,14 +200,15 @@ static void http_set_header(char *header, int code)
 
 void http_send_response(void *conn, char *body)
 {
+	struct skt_conn *skt = conn;
+
 	char *response;
-	response = (char *)malloc(1024);
+	response = (char *)malloc(skt->svr->socket_max_len);
 	if (response == NULL) {
 		printf("malloc http_send_response fail!\n");
 		return;
 	}
 
-	struct skt_conn *skt = conn;
 	http_set_header(response, 200);
 	strcat(response, body);
 	skt->write_buffer = strdup(response);

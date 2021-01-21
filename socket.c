@@ -50,19 +50,20 @@ static void write_cb(struct ev_loop *loop, ev_io *io, int revents) {
 }
 
 static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
-    skt_conn *conn = io->data;
     int ret = 0;
-    
-	conn->read_buffer = (char *)malloc(1024);
+	skt_conn *conn = io->data;
+    int malloc_len = conn->svr->socket_max_len;
+
+	conn->read_buffer = (char *)malloc(malloc_len);
 	if (conn->read_buffer == NULL) {
 		fprintf(stderr, "malloc error\n");
 		free_res(loop, io);
         return ;
 	}
 
-	memset(conn->read_buffer,'\0',1024);
+	memset(conn->read_buffer,'\0',malloc_len);
     if (revents & EV_READ) {
-        ret = read(conn->fd, conn->read_buffer, 1024);
+        ret = read(conn->fd, conn->read_buffer, malloc_len);
 		conn->read_len = ret;
 		conn->svr->on_recv_pkg(conn, conn->read_buffer, ret);
 		conn->flag = 1;

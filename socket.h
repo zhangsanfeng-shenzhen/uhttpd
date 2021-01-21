@@ -9,6 +9,7 @@ typedef struct skt_svr {
 	int server_port;
 	struct ev_loop *loop;
 	ev_io ev_accept;
+	int socket_max_len;
 	void (*on_recv_pkg)(void *conn, void *data, size_t size);
 }skt_svr;
 

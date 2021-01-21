@@ -40,6 +40,7 @@ int main(int argc, char const *argv[])
 	svr.loop = ev_default_loop(0);
 	svr.server_port = 8000;
 	svr.on_recv_pkg = on_recv_pkg;
+	svr.socket_max_len = 1024;
 	socket_server_init(svr);
 
     return 0;
