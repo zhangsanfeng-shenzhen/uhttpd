@@ -13,6 +13,34 @@
 #include "socket.h"
 #include "http_parser.h"
 #include "http.h"
+#include "log.h"
+
+typedef struct log_cfg {
+    char   *path;
+    char   *flag;
+    int     shift;
+    int     max;
+    int     num;
+    int     keep;
+} log_cfg;
+
+static int init_log(void)
+{
+	log_cfg log;
+	log.path = strdup("/tmp/fuck/logger.log");
+	log.flag = strdup("fatal,error,warn,info,debug,trace");
+	log.shift = 1;
+	log.max = 100 * 1000 * 1000;
+	log.num = 100;
+	log.keep = 7;
+
+    default_dlog = dlog_init(log.path, log.shift, log.max, log.num, log.keep);
+    if (default_dlog == NULL)
+        return -__LINE__;
+    default_dlog_flag = dlog_read_flag(log.flag);
+
+    return 0;
+}
 
 void on_recv_pkg(void *conn, void *data, size_t size)
 {
@@ -22,7 +50,7 @@ void on_recv_pkg(void *conn, void *data, size_t size)
 	http_request *request;
 	request = (http_request *)malloc(sizeof(http_request));
 	if (request == NULL) {
-		printf("error\n");
+		log_error("on_recv_pkg malloc fail!");
 		return;
 	}
 	char body[1024];
@@ -36,12 +64,17 @@ void on_recv_pkg(void *conn, void *data, size_t size)
 
 int main(int argc, char const *argv[]) 
 {
+	init_log();
+
 	skt_svr svr;
 	svr.loop = ev_default_loop(0);
 	svr.server_port = 8000;
 	svr.on_recv_pkg = on_recv_pkg;
 	svr.socket_max_len = 1024;
 	socket_server_init(svr);
+
+	log_vip("server start");
+	log_stderr("server start");
 
     return 0;
 }

@@ -13,6 +13,7 @@
 #include "socket.h"
 #include "http_parser.h"
 #include "http.h"
+#include "log.h"
 
 static int on_url_cb(struct http_parser *parser, const char *data, int len)
 {
@@ -205,7 +206,7 @@ void http_send_response(void *conn, char *body)
 	char *response;
 	response = (char *)malloc(skt->svr->socket_max_len);
 	if (response == NULL) {
-		printf("malloc http_send_response fail!\n");
+		log_error("malloc http_send_response fail!");
 		return;
 	}
 

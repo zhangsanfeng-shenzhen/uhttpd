@@ -14,13 +14,15 @@
 #include <ev.h>
 
 #include "socket.h"
+#include "log.h"
 
 static void free_res(struct ev_loop *loop, ev_io *io) {
     skt_conn *conn = io->data;
     if (conn == NULL) {
-        fprintf(stderr, "line:%d -- the conn is  NULL:%s !\n",__LINE__,strerror(errno) );
+		log_error("the conn is fail!");
         return;
     }
+
     ev_io_stop(loop, &conn->ev_read);
 	ev_io_stop(loop, &conn->ev_write);
 	free(conn->write_buffer);
@@ -56,7 +58,7 @@ static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
 
 	conn->read_buffer = (char *)malloc(malloc_len);
 	if (conn->read_buffer == NULL) {
-		fprintf(stderr, "malloc error\n");
+		log_error("read_cb function malloc fail!");
 		free_res(loop, io);
         return ;
 	}
@@ -72,20 +74,20 @@ static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
     }
 
     if (EV_ERROR & revents) {
-        fprintf(stderr, "error event in read\n");
+        log_error("error event in read\n");
         free_res(loop, io);
         return ;
     }
  
     if (ret < 0) {
-        fprintf(stderr, "read error\n");
+        log_error("read error\n");
         ev_io_stop(EV_A_ io);
         free_res(loop, io);
         return;
     }
  
     if (ret == 0) {
-        fprintf(stderr, "conn disconnected.\n");
+        log_error("conn disconnected.\n");
         ev_io_stop(EV_A_ io);
         free_res(loop, io);
         return;
@@ -98,7 +100,7 @@ static void accept_cb(struct ev_loop *loop, ev_io *io, int revents) {
     socklen_t conn_len = sizeof(conn_addr);
     int conn_fd = accept(io->fd, (struct sockaddr *) &conn_addr, &conn_len);
     if (conn_fd == -1) {
-        fprintf(stderr, "line:%d -- the accept return -1:%s !\n",__LINE__,strerror(errno) );
+        log_error("the accept connect is fail!");
         return;
     }
  
@@ -106,7 +108,7 @@ static void accept_cb(struct ev_loop *loop, ev_io *io, int revents) {
     conn->fd = conn_fd;
 	conn->svr = io->data;
     if (setnonblock(conn->fd) < 0)
-        err(1, "failed to set conn socket to non-blocking");
+        log_error("failed to set conn socket to non-blocking");
  
     conn->ev_read.data = conn;
 
@@ -125,9 +127,9 @@ void socket_server_init(skt_svr svr)
     int reuseaddr_on = 1;
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd < 0)
-		err(1, "listen failed");
+		log_error("listen failed");
 	if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_on, sizeof(reuseaddr_on)) == -1)
-		err(1, "setsockopt failed");
+		log_error("setsockopt failed");
  
 	memset(&listen_addr, 0, sizeof(listen_addr));
 	listen_addr.sin_family = AF_INET;
@@ -135,11 +137,11 @@ void socket_server_init(skt_svr svr)
 	listen_addr.sin_port = htons(svr.server_port);
  
 	if (bind(listen_fd, (struct sockaddr *) &listen_addr, sizeof(listen_addr)) < 0)
-		err(1, "bind failed");
+		log_error("bind failed");
 	if (listen(listen_fd, 5) < 0)
-		err(1, "listen failed");
+		log_error("listen failed");
 	if (setnonblock(listen_fd) < 0)
-		err(1, "failed to set server socket to non-blocking");
+		log_error("failed to set server socket to non-blocking");
  
  	svr.ev_accept.data = &svr;
 	ev_io_init(&svr.ev_accept, accept_cb, listen_fd, EV_READ);
