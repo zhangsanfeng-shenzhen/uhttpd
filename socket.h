@@ -5,6 +5,12 @@
 # ifndef _SOCKET_H_
 # define _SOCKET_H_
 
+enum
+{
+	SOCKET_CONNECT_READ_FLAGE = 1,
+	SOCKET_CONNECT_WRITE_FLAGE = 2,
+};
+
 typedef struct skt_svr {
 	int server_port;
 	struct ev_loop *loop;

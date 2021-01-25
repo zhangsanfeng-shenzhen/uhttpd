@@ -45,9 +45,9 @@ int setnonblock(int fd) {
 
 static void write_cb(struct ev_loop *loop, ev_io *io, int revents) {
 	skt_conn *conn = io->data;
-	if (conn->flag == 1) {
+	if (conn->flag == SOCKET_CONNECT_READ_FLAGE) {
 		free_res(loop, io);
-		conn->flag = 2;
+		conn->flag = SOCKET_CONNECT_WRITE_FLAGE;
 	}
 }
 
@@ -68,7 +68,7 @@ static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
         ret = read(conn->fd, conn->read_buffer, malloc_len);
 		conn->read_len = ret;
 		conn->svr->on_recv_pkg(conn, conn->read_buffer, ret);
-		conn->flag = 1;
+		conn->flag = SOCKET_CONNECT_READ_FLAGE;
 		ev_io_start(loop, &conn->ev_write);
 		write(conn->fd, conn->write_buffer, conn->write_len);
     }
