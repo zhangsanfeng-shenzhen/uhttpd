@@ -9,11 +9,31 @@
 #include <err.h>
 #include <unistd.h>
 #include <ev.h>
+#include <sys/file.h>
+#include <sys/resource.h>
 
 #include "socket.h"
 #include "http_parser.h"
 #include "http.h"
 #include "log.h"
+
+int set_file_limit(size_t limit)
+{
+    struct rlimit rlim;
+    memset(&rlim, 0, sizeof(rlim));
+    if (getrlimit(RLIMIT_NOFILE, &rlim) < 0) {
+        return -1;
+    }
+    if (rlim.rlim_cur >= limit)
+        return 0;
+    rlim.rlim_cur = limit;
+    rlim.rlim_max = limit;
+    if (setrlimit(RLIMIT_NOFILE, &rlim) < 0) {
+        return -1;
+    }
+
+    return 0;
+}
 
 typedef struct log_cfg {
     char   *path;
@@ -64,6 +84,7 @@ void on_recv_pkg(void *conn, void *data, size_t size)
 
 int main(int argc, char const *argv[]) 
 {
+	set_file_limit(1001000);
 	init_log();
 
 	skt_svr svr;
