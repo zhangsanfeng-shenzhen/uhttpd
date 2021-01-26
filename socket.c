@@ -81,23 +81,21 @@ static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
 
     if (EV_ERROR & revents) {
         log_error("error event in read\n");
-        connection_destroy(conn);
-        return ;
+        goto err;
     }
  
     if (ret < 0) {
         log_error("read error\n");
-        ev_io_stop(EV_A_ io);
-        connection_destroy(conn);
-        return;
+        goto err;
     }
- 
+
     if (ret == 0) {
         log_error("conn disconnected.\n");
-        ev_io_stop(EV_A_ io);
-        connection_destroy(conn);
-        return;
+        goto err;
     }
+
+err:
+	connection_destroy(conn);
 }
  
 
