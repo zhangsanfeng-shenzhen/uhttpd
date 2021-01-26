@@ -5,6 +5,8 @@
 # ifndef _SOCKET_H_
 # define _SOCKET_H_
 
+#define SOCKET_CONNECTION_TIMEOUT 30
+
 enum
 {
 	SOCKET_CONNECT_READ_FLAGE = 1,
@@ -23,6 +25,7 @@ typedef struct skt_conn {
     int fd;
     ev_io ev_read;
 	ev_io ev_write;
+	ev_timer ev_timer;
 	int flag;
 	int write_len;
 	char *write_buffer;

@@ -16,15 +16,15 @@
 #include "socket.h"
 #include "log.h"
 
-static void free_res(struct ev_loop *loop, ev_io *io) {
-    skt_conn *conn = io->data;
+static void connection_destroy(skt_conn *conn) {
     if (conn == NULL) {
 		log_error("the conn is fail!");
         return;
     }
 
-    ev_io_stop(loop, &conn->ev_read);
-	ev_io_stop(loop, &conn->ev_write);
+    ev_io_stop(conn->svr->loop, &conn->ev_read);
+	ev_io_stop(conn->svr->loop, &conn->ev_write);
+	ev_timer_stop(conn->svr->loop, &conn->ev_timer);
 	free(conn->write_buffer);
 	free(conn->read_buffer);
     close(conn->fd);
@@ -43,10 +43,16 @@ int setnonblock(int fd) {
     return 0;
 }
 
+static void timeout_cb(struct ev_loop *loop, ev_timer *timer, int revents)
+{
+	skt_conn *conn = timer->data;
+	connection_destroy(conn);
+}
+
 static void write_cb(struct ev_loop *loop, ev_io *io, int revents) {
 	skt_conn *conn = io->data;
 	if (conn->flag == SOCKET_CONNECT_READ_FLAGE) {
-		free_res(loop, io);
+		connection_destroy(conn);
 		conn->flag = SOCKET_CONNECT_WRITE_FLAGE;
 	}
 }
@@ -59,7 +65,7 @@ static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
 	conn->read_buffer = (char *)malloc(malloc_len);
 	if (conn->read_buffer == NULL) {
 		log_error("read_cb function malloc fail!");
-		free_res(loop, io);
+		connection_destroy(conn);
         return ;
 	}
 
@@ -75,21 +81,21 @@ static void read_cb(struct ev_loop *loop, ev_io *io, int revents) {
 
     if (EV_ERROR & revents) {
         log_error("error event in read\n");
-        free_res(loop, io);
+        connection_destroy(conn);
         return ;
     }
  
     if (ret < 0) {
         log_error("read error\n");
         ev_io_stop(EV_A_ io);
-        free_res(loop, io);
+        connection_destroy(conn);
         return;
     }
  
     if (ret == 0) {
         log_error("conn disconnected.\n");
         ev_io_stop(EV_A_ io);
-        free_res(loop, io);
+        connection_destroy(conn);
         return;
     }
 }
@@ -111,13 +117,16 @@ static void accept_cb(struct ev_loop *loop, ev_io *io, int revents) {
         log_error("failed to set conn socket to non-blocking");
  
     conn->ev_read.data = conn;
-
     ev_io_init(&conn->ev_read, read_cb, conn->fd, EV_READ);
     ev_io_start(loop, &conn->ev_read);
 
 	conn->ev_write.data = conn;
     ev_io_init(&conn->ev_write, write_cb, conn->fd, EV_WRITE);
     //ev_io_start(loop, &conn->ev_write);
+
+	conn->ev_timer.data = conn;
+	ev_timer_init(&conn->ev_timer, timeout_cb, SOCKET_CONNECTION_TIMEOUT, 0);
+	ev_timer_start(loop, &conn->ev_timer);
 }
 
 
