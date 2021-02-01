@@ -1,12 +1,14 @@
 # uhttpd
 
+#information
+
 uhttpd is a server supporting HTTP protocol, which can support high concurrency, compact code and easy installation
 
-install：
+#install：
 
   make
   
- work：
+ #work：
  
   curl http://localhost:8000/
   
